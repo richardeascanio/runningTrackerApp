@@ -56,6 +56,7 @@ class TrackingService: LifecycleService() {
     @Inject
     lateinit var baseNotificationBuilder: NotificationCompat.Builder
     private lateinit var curNotificationBuilder: NotificationCompat.Builder
+    private var serviceKilled = false
 
     companion object {
         val timeRunInMillis = MutableLiveData<Long>()
@@ -100,6 +101,7 @@ class TrackingService: LifecycleService() {
                 }
                 ACTION_STOP_SERVICE -> {
                     Timber.d("Stopped service")
+                    killService()
                 }
             }
         }
@@ -167,10 +169,11 @@ class TrackingService: LifecycleService() {
             isAccessible = true
             set(curNotificationBuilder, ArrayList<NotificationCompat.Action>())
         }
-        curNotificationBuilder = baseNotificationBuilder
-            .addAction(R.drawable.ic_pause_black_24dp, notificationActionText, pendingIntent)
-
-        notificationManager.notify(NOTIFICATION_ID, curNotificationBuilder.build())
+        if (!serviceKilled) {
+            curNotificationBuilder = baseNotificationBuilder
+                .addAction(R.drawable.ic_pause_black_24dp, notificationActionText, pendingIntent)
+            notificationManager.notify(NOTIFICATION_ID, curNotificationBuilder.build())
+        }
     }
 
     @SuppressLint("MissingPermission") // Add this because I am requesting permissions with Easy Permissions library and it doesn't recognize it
@@ -207,6 +210,15 @@ class TrackingService: LifecycleService() {
         }
     }
 
+    private fun killService() {
+        serviceKilled = true
+        isFirstRun = true
+        pauseService()
+        postInitialValues()
+        stopForeground(true)
+        stopSelf()
+    }
+
     private fun addEmptyPolyline() = pathPoints.value?.apply {
         add(mutableListOf())
         pathPoints.postValue(this)
@@ -221,10 +233,13 @@ class TrackingService: LifecycleService() {
 
         startForeground(NOTIFICATION_ID, baseNotificationBuilder.build())
 
-        timeRunInMillis.observe(this, {
-            val notification = curNotificationBuilder
-                .setContentText(TrackingUtility.getFormattedStopWatchTime(it))
-            notificationManager.notify(NOTIFICATION_ID, notification.build())
+        timeRunInSeconds.observe(this, {
+            if (!serviceKilled) {
+                val notification = curNotificationBuilder
+                    .setContentText(TrackingUtility.getFormattedStopWatchTime(it * 1000L))
+                notificationManager.notify(NOTIFICATION_ID, notification.build())
+            }
+
         })
     }
 
